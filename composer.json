@@ -1,0 +1,20 @@
+{
+    "name": "avik/pulse",
+    "description": "HTTP runtime and request lifecycle kernel for the Avik framework",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Avik\\Pulse\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=8.1",
+        "avik/ignite": "^1.0",
+        "avik/flow": "^1.0",
+        "avik/path": "^1.0",
+        "avik/crate": "^1.0",
+        "avik/canvas": "^1.0"
+    },
+    "minimum-stability": "stable"
+}
