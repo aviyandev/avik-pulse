@@ -5,3 +5,4 @@
 composer.lock
 publish.ps1
 publish.sh
+test.php

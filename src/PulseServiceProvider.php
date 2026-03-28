@@ -4,33 +4,33 @@ declare(strict_types=1);
 
 namespace Avik\Pulse;
 
-use Avik\Seed\Contracts\ServiceProvider;
-use Avik\Crate\Container;
-use Avik\Pulse\Http\{
-    Kernel,
-    Pipeline,
-    ControllerDispatcher
-};
-use Avik\Pulse\Exceptions\HttpExceptionHandler;
-
 use Avik\Ignite\Application;
+use Avik\Seed\Contracts\ServiceProvider;
+use Avik\Pulse\Http\Kernel;
+use Avik\Pulse\Http\ControllerDispatcher;
+use Avik\Pulse\Exceptions\HttpExceptionHandler;
 
 final class PulseServiceProvider implements ServiceProvider
 {
-    private Container $container;
-
-    public function __construct(Application $app)
-    {
-        $this->container = $app->container();
-    }
+    public function __construct(private Application $app) {}
 
     public function register(): void
     {
-        $this->container->singleton(Kernel::class, Kernel::class);
-        $this->container->singleton(Pipeline::class, Pipeline::class);
-        $this->container->singleton(ControllerDispatcher::class, ControllerDispatcher::class);
-        $this->container->singleton(HttpExceptionHandler::class, HttpExceptionHandler::class);
+        $container = $this->app->container();
+
+        // Core HTTP Kernel
+        $container->singleton(Kernel::class);
+
+        // Controller Dispatcher
+        $container->singleton(ControllerDispatcher::class);
+
+        // Exception Handler
+        $container->singleton(HttpExceptionHandler::class);
+        $container->instance('exceptions', $container->make(HttpExceptionHandler::class));
     }
 
-    public function boot(): void {}
+    public function boot(): void
+    {
+        // You can register default middleware groups here in the future
+    }
 }

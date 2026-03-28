@@ -6,106 +6,114 @@ namespace Avik\Pulse\Http;
 
 use Avik\Flow\Http\Request;
 use Avik\Flow\Http\Response;
+use Avik\Flow\Middleware\Pipeline as FlowPipeline;
 use Avik\Path\Dispatcher;
+use Avik\Path\RouteCollection;
 use Avik\Crate\Container;
 use Avik\Pulse\Exceptions\HttpExceptionHandler;
 
-class Kernel
+final class Kernel
 {
-    /**
-     * The application's global HTTP middleware stack.
-     */
+    /** Global middleware (runs on every request) */
     protected array $middleware = [];
 
-    /**
-     * The application's route middleware groups.
-     */
-    protected array $middlewareGroups = [];
+    /** Middleware groups: 'web', 'api', etc. */
+    protected array $middlewareGroups = [
+        'web' => [],
+        'api' => [],
+    ];
 
-    /**
-     * The application's route middleware aliases.
-     */
+    /** Named middleware aliases */
     protected array $middlewareAliases = [];
 
     public function __construct(
         private Container $container,
         private Dispatcher $dispatcher,
-        private Pipeline $pipeline,
+        private FlowPipeline $pipeline,           // ← Reusing Flow Pipeline
         private HttpExceptionHandler $exceptions
     ) {}
 
     public function handle(Request $request): Response
     {
         try {
+            $routeCollection = $this->container->make(RouteCollection::class);
+
             [$route, $params] = $this->dispatcher->dispatch(
                 $request->method(),
-                $request->path(),
-                $this->container->make('routes')
+                $request->uri(),
+                $routeCollection
             );
 
             $middleware = $this->gatherMiddleware($route);
 
+            // Use Flow's Pipeline
             return $this->pipeline
-                ->send($middleware)
                 ->process(
                     $request,
-                    fn(Request $req) =>
-                    $this->container
-                        ->make(ControllerDispatcher::class)
-                        ->dispatch($route, $params, $req)
+                    fn(Request $req) => $this->dispatchToRoute($route, $params, $req)
                 );
+
         } catch (\Throwable $e) {
             return $this->exceptions->handle($request, $e);
         }
     }
 
+    protected function dispatchToRoute(Route $route, array $params, Request $request): Response
+    {
+        return $this->container
+            ->make(ControllerDispatcher::class)
+            ->dispatch($route, $params, $request);
+    }
+
     /**
-     * Gather all middleware for the given route.
+     * Gather middleware for the current route
      */
-    protected function gatherMiddleware($route): array
+    protected function gatherMiddleware(Route $route): array
     {
         $middleware = $this->middleware;
 
-        if (isset($route->middleware)) {
-            foreach ((array) $route->middleware as $name) {
-                $middleware = array_merge($middleware, $this->resolveMiddleware($name));
-            }
+        foreach ((array) ($route->middleware ?? []) as $item) {
+            $middleware = array_merge($middleware, $this->resolveMiddleware($item));
         }
 
         return array_unique($middleware);
     }
 
     /**
-     * Resolve the middleware name to its class(es).
+     * Resolve middleware name/alias/group into class names
      */
     protected function resolveMiddleware(string $name): array
     {
         $params = '';
+
         if (str_contains($name, ':')) {
             [$name, $params] = explode(':', $name, 2);
             $params = ':' . $params;
         }
 
+        // Group (web, api, etc.)
         if (isset($this->middlewareGroups[$name])) {
-            $resolved = [];
-            foreach ($this->middlewareGroups[$name] as $middleware) {
-                $resolved[] = $middleware . $params;
-            }
-            return $resolved;
+            return array_map(
+                fn(string $m) => $m . $params,
+                $this->middlewareGroups[$name]
+            );
         }
 
+        // Alias
         if (isset($this->middlewareAliases[$name])) {
-            return (array) ($this->middlewareAliases[$name] . $params);
+            return [(string) $this->middlewareAliases[$name] . $params];
         }
 
+        // Direct class name
         return [$name . $params];
     }
 
     /**
-     * Terminate the request lifecycle.
+     * Terminate the request (cleanup)
      */
     public function terminate(Request $request, Response $response): void
     {
-        $this->pipeline->terminate($request, $response);
+        // Flow Pipeline already implements Terminable if needed
+        // You can extend it later if you want custom termination logic
     }
 }
